@@ -1,0 +1,12 @@
+[package]
+name = "spaceapipoller"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+envy = "0.4.2"
+reqwest = { version = "0.12.12", features = ["blocking"] }
+rumqttc = "0.24.0"
+serde = { version = "1.0.218", features = ["derive"] }
+serde_json = "1.0.139"
+spaceapi = {git = "https://github.com/spaceapi-community/spaceapi-rs.git"}
