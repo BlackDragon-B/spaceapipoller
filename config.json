@@ -1,13 +1,13 @@
 {
     "name": "SpaceAPI Poller",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "slug": "spaceapipoller",
     "description": "Tool that polls endpoints of several hackerspaces and sends the spacestate over MQTT",
     "arch": ["amd64", "armhf", "armv7", "aarch64"],
     "startup": "application",
     "boot": "auto",
     "options": {
-      "mqtt_broker": "mqtt://localhost",
+      "mqtt_broker": "localhost",
       "mqtt_username": "",
       "mqtt_password": "",
       "mqtt_port": 1883,

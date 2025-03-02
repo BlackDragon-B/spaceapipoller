@@ -14,5 +14,6 @@ FROM $BUILD_FROM
 WORKDIR /app
 
 COPY --from=builder /app/target/release/spaceapipoller /app/spaceapipoller
+COPY --from=builder /app/run.sh /app/run.sh
 
-ENTRYPOINT ["./spaceapipoller"]
+ENTRYPOINT ["./run.sh"]
