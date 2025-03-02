@@ -1,0 +1,28 @@
+{
+    "name": "SpaceAPI Poller",
+    "version": "0.1.0",
+    "slug": "spaceapipoller",
+    "description": "Tool that polls endpoints of several hackerspaces and sends the spacestate over MQTT",
+    "arch": ["amd64", "armhf", "armv7", "aarch64"],
+    "startup": "application",
+    "boot": "auto",
+    "options": {
+      "mqtt_broker": "mqtt://localhost",
+      "mqtt_username": "",
+      "mqtt_password": "",
+      "mqtt_port": 1883,
+      "directory": "https://directory.spaceapi.io/",
+      "spaces": "Bitlair;RevSpace;Hackalot;Hack42",
+      "polling_rate": 600
+    },
+    "schema": {
+      "mqtt_broker": "str",
+      "mqtt_username": "str?",
+      "mqtt_password": "str?",
+      "mqtt_port": "int(1,65535)?",
+      "directory": "str?",
+      "spaces": "str",
+      "polling_rate": "int?"
+    }
+}
+  

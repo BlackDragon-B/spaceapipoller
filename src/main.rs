@@ -1,15 +1,45 @@
 mod utils;
-use rumqttc::MqttOptions;
+use rumqttc::{Client, MqttOptions};
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::{collections::HashMap, process, thread, time};
 use utils::{get_endpoint, to_safe_entity_name};
 
 #[derive(Debug)]
 struct Space {
     name: String,
+    entity_name: String,
     endpoint: String,
     state: bool,
+}
+
+impl Space {
+    fn build_discovery_packet(&self) -> (String, Value) {
+        let payload = json!({
+            "name": format!("{} Spacestate",&self.name), // Friendly name
+            "unique_id": &self.entity_name, // Unique identifier
+            "state_topic": format!("spacestate/{}/state",&self.entity_name), // Topic for state updates
+            "payload_on": "OPEN", // Payload for "on" state
+            "payload_off": "CLOSED", // Payload for "off" state
+        });
+        (
+            format!(
+                "homeassistant/binary_sensor/spacestate/{}/config",
+                &self.entity_name
+            ),
+            payload,
+        )
+    }
+    fn build_state_packet(&self) -> (String, String) {
+        let state: &str = match &self.state {
+            true => "OPEN",
+            false => "CLOSED",
+        };
+        (
+            format!("spacestate/{}/state", &self.entity_name),
+            state.to_string(),
+        )
+    }
 }
 
 fn default_polling_rate() -> u64 {
@@ -20,8 +50,8 @@ fn default_directory() -> String {
     "https://directory.spaceapi.io".to_string()
 }
 
-fn default_mqtt_port() -> String {
-    "1883".to_string()
+fn default_mqtt_port() -> u16 {
+    1883
 }
 
 #[derive(Deserialize, Debug)]
@@ -30,7 +60,7 @@ struct Config {
     mqtt_username: Option<String>,
     mqtt_password: Option<String>,
     #[serde(default = "default_mqtt_port")]
-    mqtt_port: String,
+    mqtt_port: u16,
     #[serde(default = "default_directory")]
     directory: String,
     spaces: String,
@@ -48,7 +78,7 @@ fn main() {
         }
     };
     //Connect to MQTT Broker
-    let mut mqttoptions = MqttOptions::new("test-1", config.mqtt_broker, 1883);
+    let mut mqttoptions = MqttOptions::new("spaceapipoller", config.mqtt_broker, config.mqtt_port);
     if config.mqtt_username.is_some() && config.mqtt_password.is_some() {
         mqttoptions.set_credentials(config.mqtt_username.unwrap(), config.mqtt_password.unwrap());
     }
@@ -56,15 +86,13 @@ fn main() {
     thread::spawn(move || {
         for (i, notification) in connection.iter().enumerate() {
             match notification {
-                Ok(notif) => {
-                    println!("{i}. Notification = {notif:?}");
-                }
+                Ok(notif) => {}
                 Err(error) => {
-                    println!("{i}. Notification = {error:?}");
+                    println!("ERROR: MQTT {error:?}");
                     return;
                 }
             }
-        }    
+        }
     });
     //Load directory
     let request = reqwest::blocking::Client::new()
@@ -98,7 +126,7 @@ fn main() {
     for space in config.spaces.split(";") {
         match directory.entry(space.to_string()) {
             std::collections::hash_map::Entry::Occupied(entry) => match get_endpoint(entry.get()) {
-                Ok(_) => {
+                Ok(status) => {
                     println!(
                         "INFO: Adding space {} with endpoint {}",
                         entry.key(),
@@ -106,8 +134,12 @@ fn main() {
                     );
                     spaces.push(Space {
                         name: entry.key().to_string(),
+                        entity_name: to_safe_entity_name(&format!(
+                            "{} Spacestate",
+                            entry.key().to_string()
+                        )),
                         endpoint: entry.get().to_string(),
-                        state: false,
+                        state: status.state.and_then(|s| s.open).unwrap_or(false),
                     })
                 }
                 Err(err) => {
@@ -122,7 +154,6 @@ fn main() {
             }
         }
     }
-    client.publish("test/state", rumqttc::QoS::AtLeastOnce, true, "test").unwrap();
     //Exit if no eligible spaces are available/set
     if spaces.len() == 0 {
         eprintln!("ERROR: No eligible space available",);
@@ -130,16 +161,19 @@ fn main() {
     }
     //Send discovery topic to home assistant
     for space in &spaces {
-        println!("yes");
-        let discovery_topic = format!("homeassistant/binary_sensor/spacestate/{}/config",to_safe_entity_name(&format!("{} Spacestate",space.name)));
-        let payload = json!({
-            "name": format!("{} Spacestate",space.name), // Friendly name
-            "unique_id": to_safe_entity_name(&format!("{} Spacestate",space.name)), // Unique identifier
-            "state_topic": format!("spacestate/{}/state",to_safe_entity_name(&format!("{} Spacestate",space.name))), // Topic for state updates
-            "payload_on": "OPEN", // Payload for "on" state
-            "payload_off": "CLOSED", // Payload for "off" state
-        });
-        client.publish(discovery_topic, rumqttc::QoS::AtLeastOnce, true, payload.to_string()).unwrap();
+        let (discovery_topic, payload) = space.build_discovery_packet();
+        if let Err(e) = client.publish(
+            discovery_topic,
+            rumqttc::QoS::AtLeastOnce,
+            true,
+            payload.to_string(),
+        ) {
+            println!("ERROR: Failed to send MQTT discovery packet ({})", e)
+        };
+        let (discovery_topic, payload) = space.build_state_packet();
+        if let Err(e) = client.publish(discovery_topic, rumqttc::QoS::AtLeastOnce, true, payload) {
+            println!("ERROR: Failed to send MQTT state packet ({})", e)
+        };
     }
     //Start polling loop
     loop {
@@ -149,12 +183,16 @@ fn main() {
                     let state = status.state.and_then(|s| s.open).unwrap_or(false);
                     if state != space.state {
                         //Send MQTT update, state changed
-                        let s = match state {
-                            true => "OPEN",
-                            false => "CLOSED",
-                        };
-                        let _ = client.publish(format!("spacestate/{}/state",to_safe_entity_name(&format!("{} Spacestate",space.name))), rumqttc::QoS::AtLeastOnce, true, s);
                         space.state = state;
+                        let (discovery_topic, payload) = space.build_state_packet();
+                        if let Err(e) = client.publish(
+                            discovery_topic,
+                            rumqttc::QoS::AtLeastOnce,
+                            true,
+                            payload,
+                        ) {
+                            println!("ERROR: Failed to send MQTT state packet ({})", e)
+                        };
                     }
                 }
                 Err(err) => {
@@ -165,7 +203,6 @@ fn main() {
                 }
             }
         }
-        println!("{:?}", spaces);
         thread::sleep(time::Duration::from_secs(config.polling_rate))
     }
 }
