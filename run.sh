@@ -1,4 +1,4 @@
-#!/usr/bin/with-contenv bashio
+#!/usr/bin/env bashio
 set +u
 
 export mqtt_broker=$(bashio::config 'mqtt_broker')
