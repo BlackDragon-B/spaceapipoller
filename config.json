@@ -1,6 +1,6 @@
 {
     "name": "SpaceAPI Poller",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "slug": "spaceapipoller",
     "description": "Tool that polls endpoints of several hackerspaces and sends the spacestate over MQTT",
     "arch": ["amd64", "armhf", "armv7", "aarch64"],
