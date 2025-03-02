@@ -15,5 +15,6 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/spaceapipoller /app/spaceapipoller
 COPY --from=builder /app/run.sh /app/run.sh
+RUN chmod +x /app/run.sh
 
 ENTRYPOINT ["./run.sh"]
